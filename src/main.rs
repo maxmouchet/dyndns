@@ -1,8 +1,12 @@
+mod porkbun;
+
 use chrono::Local;
 use clap::Parser as CliParser;
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 use env_logger::Builder;
 use std::io::Write;
+
+use crate::porkbun::Porkbun;
 
 #[derive(CliParser, Debug)]
 #[command(version, about, long_about = None)]
@@ -14,6 +18,10 @@ struct CLI {
     /// Porkbun secret key
     #[arg(long)]
     porkbun_secret_key: String,
+
+    /// Domain
+    #[arg(long)]
+    domain: String,
 
     /// Verbosity level
     #[clap(flatten)]
@@ -39,6 +47,10 @@ fn set_logging(cli: &CLI) {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = CLI::parse();
     set_logging(&cli);
+
+    let porkbun = Porkbun::new(cli.porkbun_api_key, cli.porkbun_secret_key, cli.domain);
+    let txt = porkbun.get_record("ams.sw.infra", "A").await?;
+    println!("{}", txt);
 
     Ok(())
 }
