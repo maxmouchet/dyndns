@@ -1,5 +1,6 @@
 mod porkbun;
 
+use axum::{extract::State, routing::get, Router};
 use chrono::Local;
 use clap::Parser as CliParser;
 use clap_verbosity_flag::{InfoLevel, Verbosity};
@@ -8,7 +9,7 @@ use std::io::Write;
 
 use crate::porkbun::Porkbun;
 
-#[derive(CliParser, Debug)]
+#[derive(CliParser, Debug, Clone)]
 #[command(version, about, long_about = None)]
 struct CLI {
     /// Porkbun API key
@@ -48,9 +49,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = CLI::parse();
     set_logging(&cli);
 
-    let porkbun = Porkbun::new(cli.porkbun_api_key, cli.porkbun_secret_key, cli.domain);
-    let txt = porkbun.get_record("ams.sw.infra", "A").await?;
-    println!("{}", txt);
+    let app = Router::new().route("/", get(root)).with_state(cli.clone());
+
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
+    axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+async fn root(State(cli): State<CLI>) -> String {
+    let porkbun = Porkbun::new(cli.porkbun_api_key, cli.porkbun_secret_key, cli.domain);
+    porkbun.get_record("ams.sw.infra", "A").await.unwrap()
 }

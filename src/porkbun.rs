@@ -8,6 +8,7 @@ struct Auth {
 }
 
 pub struct Porkbun {
+    base_url: String,
     client: Client,
     domain: String,
     auth: Auth,
@@ -21,6 +22,7 @@ impl Porkbun {
             secretapikey: secret_key,
         };
         Porkbun {
+            base_url: String::from("https://porkbun.com/api/json/v3"),
             client,
             domain,
             auth,
@@ -33,8 +35,8 @@ impl Porkbun {
         record_type: &str,
     ) -> Result<String, Box<dyn std::error::Error>> {
         let url = format!(
-            "https://api.porkbun.com/api/json/v3/dns/retrieveByNameType/{}/{}/{}",
-            self.domain, record_type, subdomain
+            "{}/dns/retrieveByNameType/{}/{}/{}",
+            self.base_url, self.domain, record_type, subdomain
         );
         let auth = serde_json::to_string(&self.auth)?;
         let response = self.client.post(url).body(auth).send().await?;
