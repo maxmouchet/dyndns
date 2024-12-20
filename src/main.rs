@@ -1,10 +1,15 @@
 mod porkbun;
 
-use axum::{extract::State, routing::get, Router};
+use axum::{
+    extract::{Query, State},
+    routing::get,
+    Router,
+};
 use chrono::Local;
 use clap::Parser as CliParser;
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 use env_logger::Builder;
+use serde::Deserialize;
 use std::io::Write;
 
 use crate::porkbun::Porkbun;
@@ -44,6 +49,14 @@ fn set_logging(cli: &CLI) {
         .init();
 }
 
+#[derive(Deserialize)]
+struct Params {
+    subdomain: String,
+    a: Option<String>,
+    aaaa: Option<String>,
+    clear: Option<bool>,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = CLI::parse();
@@ -57,7 +70,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn root(State(cli): State<CLI>) -> String {
+async fn root(State(cli): State<CLI>, params: Query<Params>) -> String {
+    let (record_type, ip) = match (params.a.as_deref(), params.aaaa.as_deref()) {
+        (Some(a), None) => ("A", a),
+        (None, Some(aaaa)) => ("AAAA", aaaa),
+        _ => return String::from("Request Error: No IP provided"),
+    };
+
     let porkbun = Porkbun::new(cli.porkbun_api_key, cli.porkbun_secret_key, cli.domain);
-    porkbun.get_record("ams.sw.infra", "A").await.unwrap()
+    porkbun
+        .delete_record(&params.subdomain, &record_type, &ip)
+        .await
+        .unwrap();
+
+    if params.clear.unwrap_or(false) {
+        return String::from("Record deleted");
+    }
+
+    porkbun
+        .create_record(&params.subdomain, &record_type, &ip)
+        .await
+        .unwrap()
 }
