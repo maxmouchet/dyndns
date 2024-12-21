@@ -20,6 +20,10 @@ use crate::porkbun::Porkbun;
 #[derive(CliParser, Debug, Clone)]
 #[command(version, about, long_about = None)]
 struct CLI {
+    /// Host
+    #[arg(long, default_value = "0.0.0.0:3000")]
+    host: String,
+
     /// Porkbun API key
     #[arg(long)]
     porkbun_api_key: String,
@@ -99,7 +103,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app = Router::new().route("/", get(root)).with_state(cli.clone());
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
+    let listener = tokio::net::TcpListener::bind(cli.host).await?;
     axum::serve(listener, app).await?;
 
     Ok(())
