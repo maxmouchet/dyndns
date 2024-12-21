@@ -14,5 +14,7 @@ RUN apt-get update \
 
 COPY --from=builder /usr/local/cargo/bin/dyndns /app/dyndns
 
+EXPOSE 3000
+
 ENTRYPOINT [ "/app/dyndns" ]
 CMD [ "--help" ]
