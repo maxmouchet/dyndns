@@ -31,6 +31,10 @@ struct CLI {
     #[arg(long)]
     domain: String,
 
+    // Subdomain
+    #[arg(long)]
+    subdomain: Option<String>,
+
     /// Verbosity level
     #[clap(flatten)]
     verbose: Verbosity<InfoLevel>,
@@ -69,6 +73,7 @@ use axum::response::Response as AxumResponse;
 #[derive(serde::Serialize)]
 struct Response {
     message: String,
+    domain: String,
 }
 
 impl IntoResponse for Response {
@@ -90,11 +95,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn response(status: StatusCode, message: &str) -> (StatusCode, Json<Response>) {
+fn response(status: StatusCode, message: &str, domain: &str) -> (StatusCode, Json<Response>) {
     (
         status,
         Json(Response {
             message: String::from(message),
+            domain: String::from(domain),
         }),
     )
 }
@@ -102,7 +108,7 @@ fn response(status: StatusCode, message: &str) -> (StatusCode, Json<Response>) {
 #[axum::debug_handler]
 async fn root(State(cli): State<CLI>, params: Query<Params>) -> impl IntoResponse {
     if cli.token != params.token {
-        return response(StatusCode::UNAUTHORIZED, "Unauthorized: Invalid token");
+        return response(StatusCode::UNAUTHORIZED, "Unauthorized: Invalid token", "");
     }
 
     let (record_type, ip) = match (params.a.as_deref(), params.aaaa.as_deref()) {
@@ -112,24 +118,31 @@ async fn root(State(cli): State<CLI>, params: Query<Params>) -> impl IntoRespons
             return response(
                 StatusCode::BAD_REQUEST,
                 "Bad request: Either A or AAAA record must be provided",
+                "",
             )
         }
     };
 
+    let mut subdomain = params.subdomain.clone();
+    if !cli.subdomain.is_none() {
+        subdomain = format!("{}.{}", params.subdomain, cli.subdomain.unwrap());
+    }
+    let domain = format!("{}.{}", subdomain, cli.domain);
+
     let porkbun = Porkbun::new(cli.porkbun_api_key, cli.porkbun_secret_key, cli.domain);
     porkbun
-        .delete_record(&params.subdomain, &record_type, &ip)
+        .delete_record(&subdomain, &record_type, &ip)
         .await
         .unwrap();
 
     if params.clear.unwrap_or(false) {
-        return response(StatusCode::OK, "OK");
+        return response(StatusCode::OK, "OK", &domain);
     }
 
     porkbun
-        .create_record(&params.subdomain, &record_type, &ip)
+        .create_record(&subdomain, &record_type, &ip)
         .await
         .unwrap();
 
-    response(StatusCode::OK, "OK")
+    response(StatusCode::OK, "OK", &domain)
 }
