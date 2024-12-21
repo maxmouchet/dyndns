@@ -2,8 +2,10 @@ mod porkbun;
 
 use axum::{
     extract::{Query, State},
+    http::StatusCode,
+    response::IntoResponse,
     routing::get,
-    Router,
+    Json, Router,
 };
 use chrono::Local;
 use clap::Parser as CliParser;
@@ -32,6 +34,10 @@ struct CLI {
     /// Verbosity level
     #[clap(flatten)]
     verbose: Verbosity<InfoLevel>,
+
+    /// Authentication token
+    #[arg(long)]
+    token: String,
 }
 
 fn set_logging(cli: &CLI) {
@@ -51,10 +57,24 @@ fn set_logging(cli: &CLI) {
 
 #[derive(Deserialize)]
 struct Params {
+    token: String,
     subdomain: String,
     a: Option<String>,
     aaaa: Option<String>,
     clear: Option<bool>,
+}
+
+use axum::response::Response as AxumResponse;
+
+#[derive(serde::Serialize)]
+struct Response {
+    message: String,
+}
+
+impl IntoResponse for Response {
+    fn into_response(self) -> AxumResponse {
+        AxumResponse::new(axum::body::Body::empty())
+    }
 }
 
 #[tokio::main]
@@ -70,11 +90,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn root(State(cli): State<CLI>, params: Query<Params>) -> String {
+fn response(status: StatusCode, message: &str) -> (StatusCode, Json<Response>) {
+    (
+        status,
+        Json(Response {
+            message: String::from(message),
+        }),
+    )
+}
+
+#[axum::debug_handler]
+async fn root(State(cli): State<CLI>, params: Query<Params>) -> impl IntoResponse {
+    if cli.token != params.token {
+        return response(StatusCode::UNAUTHORIZED, "Unauthorized: Invalid token");
+    }
+
     let (record_type, ip) = match (params.a.as_deref(), params.aaaa.as_deref()) {
         (Some(a), None) => ("A", a),
         (None, Some(aaaa)) => ("AAAA", aaaa),
-        _ => return String::from("Request Error: No IP provided"),
+        _ => {
+            return response(
+                StatusCode::BAD_REQUEST,
+                "Bad request: Either A or AAAA record must be provided",
+            )
+        }
     };
 
     let porkbun = Porkbun::new(cli.porkbun_api_key, cli.porkbun_secret_key, cli.domain);
@@ -84,11 +123,13 @@ async fn root(State(cli): State<CLI>, params: Query<Params>) -> String {
         .unwrap();
 
     if params.clear.unwrap_or(false) {
-        return String::from("Record deleted");
+        return response(StatusCode::OK, "OK");
     }
 
     porkbun
         .create_record(&params.subdomain, &record_type, &ip)
         .await
-        .unwrap()
+        .unwrap();
+
+    response(StatusCode::OK, "OK")
 }

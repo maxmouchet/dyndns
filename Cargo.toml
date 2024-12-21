@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum = "0.7.5"
+axum = { version = "0.7.5", features = ["macros"] }
 chrono = "0.4.39"
 clap = { version = "4.5.20", features = ["derive"] }
 clap-verbosity-flag = "3.0.0"
